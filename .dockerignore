@@ -1,0 +1,29 @@
+# Dependencies and generated build output
+node_modules
+.next
+out
+build
+coverage
+.turbo
+.vercel
+*.tsbuildinfo
+
+# Git metadata and local editor/OS files
+.git
+.gitignore
+.dockerignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Local environment files and runtime data
+.env*
+!.env.example
+.gitreadme_data
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

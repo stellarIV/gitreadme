@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+build/
+coverage/
+.turbo/
+.vercel/
+*.tsbuildinfo
+
+# Local environment and secrets
+.env*
+!.env.example
+
+# Runtime data
+.gitreadme_data/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

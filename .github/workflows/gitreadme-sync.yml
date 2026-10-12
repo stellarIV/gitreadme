@@ -1,0 +1,23 @@
+name: Sync Gitreadme Docs
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Auto-Sync Architecture Docs
+        run: |
+          echo "Syncing documentation via gitreadme..."
+          # Users can hook this to call the gitreadme webhook API or CLI
