@@ -145,59 +145,67 @@ export function synthesizeHeuristicAnalysis(
     });
   }
 
-  // Construct Dynamic Mermaid Flowchart with clickable GitHub source nodes
-  const ghBase = `${metadata.htmlUrl}/tree/${metadata.defaultBranch}`;
-
+  // Construct Multi-Tier Mermaid Flowchart with subgraphs
   let diagramMermaid = `flowchart TD
-    Client["Client / Web Browser"] --> Gateway["Application Layer (${metadata.name})"]
-    click Gateway "${metadata.htmlUrl}" "View on GitHub"`;
+    subgraph ClientTier ["🖥️ Presentation Layer"]
+      User["Client / Web Browser"]
+    end
+    subgraph AppTier ["⚙️ Application Core"]
+      Gateway["Application Engine (${metadata.name})"]
+    end
+    User --> Gateway`;
 
   if (hasBackend && hasFrontend) {
     diagramMermaid = `flowchart TD
-    User["Web Browser / Client"] --> Frontend["Frontend UI (${hasNext ? "Next.js" : "React"})"]
-    Frontend --> Backend["Backend Service (${hasExpress ? "Express" : hasFastAPI ? "FastAPI" : "API Routes"})"]`;
-    if (hasDb) {
-      diagramMermaid += `\n    Backend --> DB[("Database (${hasPrisma ? "Prisma / Postgres" : "Relational DB"})")]`;
-    }
-    if (hasCache) {
-      diagramMermaid += `\n    Backend --> Cache[("Redis Cache")]`;
-    }
-    diagramMermaid += `\n    click Frontend "${ghBase}/src" "View frontend source"`;
-    diagramMermaid += `\n    click Backend "${ghBase}/src/api" "View backend source"`;
-    if (hasDb) {
-      diagramMermaid += `\n    click DB "${ghBase}/prisma" "View database schema"`;
-    }
-    if (hasCache) {
-      diagramMermaid += `\n    click Cache "${ghBase}/src/lib/redis" "View cache layer"`;
-    }
+    subgraph ClientTier ["🖥️ Presentation Tier"]
+      User["Web Browser / Client"]
+      Frontend["Frontend UI (${hasNext ? "Next.js App" : "React Client"})"]
+    end
+    subgraph ServiceTier ["⚙️ Backend & API Services"]
+      Backend["API Service (${hasExpress ? "Express API" : hasFastAPI ? "FastAPI Router" : "Server Handlers"})"]
+    end
+    subgraph DataTier ["💾 Data & Persistence Tier"]
+      DB[("Primary Database (${hasPrisma ? "Prisma ORM" : "Data Store"})")]
+      Cache[("Cache Layer (Redis)")]
+    end
+    User --> Frontend
+    Frontend --> Backend
+    Backend --> DB
+    Backend --> Cache`;
   } else if (hasNext) {
     diagramMermaid = `flowchart TD
-    User["Web Browser"] --> NextUI["Next.js App Router (SSR / React)"]
-    NextUI --> APIRoutes["Next.js API Server Actions / Handlers"]`;
-    if (hasDb) {
-      diagramMermaid += `\n    APIRoutes --> DB[("Database (${hasPrisma ? "Prisma" : "PostgreSQL"})")]`;
-    }
-    if (hasCache) {
-      diagramMermaid += `\n    APIRoutes --> Cache[("Redis Cache")]`;
-    }
-    diagramMermaid += `\n    click NextUI "${ghBase}/src/app" "View Next.js app directory"`;
-    diagramMermaid += `\n    click APIRoutes "${ghBase}/src/app/api" "View API routes"`;
-    if (hasDb) {
-      diagramMermaid += `\n    click DB "${ghBase}/prisma" "View database schema"`;
-    }
-    if (hasCache) {
-      diagramMermaid += `\n    click Cache "${ghBase}/src/lib/redis" "View cache layer"`;
-    }
+    subgraph ClientTier ["🖥️ Client & Hydration Layer"]
+      User["Web Browser"]
+      NextUI["Next.js React Server Components & UI"]
+    end
+    subgraph ServerTier ["⚙️ App Router & Edge Runtime"]
+      APIRoutes["API Route Handlers & Server Actions"]
+      Middleware["Request Middleware & Auth"]
+    end
+    subgraph StorageTier ["💾 Storage & External Integrations"]
+      DB[("Database (${hasPrisma ? "Prisma / Postgres" : "Persistent Store"})")]
+      Cache[("Cache & Session Store")]
+    end
+    User --> NextUI
+    NextUI --> Middleware
+    Middleware --> APIRoutes
+    APIRoutes --> DB
+    APIRoutes --> Cache`;
   } else if (hasBackend) {
     diagramMermaid = `flowchart TD
-    Consumer["API Consumers / HTTP Clients"] --> Server["API Server (${hasFastAPI ? "FastAPI" : "Node Server"})"]`;
-    if (hasDb) {
-      diagramMermaid += `\n    Server --> DB[("Persistent Storage")]`;
-    }
-    diagramMermaid += `\n    click Server "${ghBase}/src" "View server source"`;
-    if (hasDb) {
-      diagramMermaid += `\n    click DB "${ghBase}/db" "View database layer"`;
-    }
+    subgraph IngressTier ["🌐 Ingress & Routing"]
+      Client["API Consumers & HTTP Clients"]
+      Router["HTTP Router & Middleware"]
+    end
+    subgraph ServiceTier ["⚙️ Core Business Logic"]
+      Server["Application Service (${hasFastAPI ? "FastAPI" : "Node.js Core"})"]
+    end
+    subgraph PersistenceTier ["💾 Data & Storage"]
+      DB[("Persistent Database / Storage")]
+    end
+    Client --> Router
+    Router --> Server
+    Server --> DB`;
   }
 
   // Generate Setup Guide

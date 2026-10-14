@@ -39,6 +39,27 @@ interface AnalysisStore {
   analyze: (targetUrl?: string, forceRefresh?: boolean) => Promise<void>;
 }
 
+function getInitialSettings(): AppSettings {
+  const defaultSettings: AppSettings = {
+    provider: "auto",
+    apiKey: "",
+    model: "",
+    githubToken: "",
+    ollamaBaseUrl: "http://localhost:11434",
+  };
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("gitreadme_settings");
+      if (raw) {
+        return { ...defaultSettings, ...JSON.parse(raw) };
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return defaultSettings;
+}
+
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   repoUrl: "",
   mode: "professional",
@@ -51,13 +72,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   isShortcutsOpen: false,
   isPushModalOpen: false,
   isShareModalOpen: false,
-  settings: {
-    provider: "auto",
-    apiKey: "",
-    model: "",
-    githubToken: "",
-    ollamaBaseUrl: "http://localhost:11434",
-  },
+  settings: getInitialSettings(),
 
   setRepoUrl: (repoUrl) => set({ repoUrl }),
   setMode: (mode) => set({ mode }),

@@ -46,7 +46,16 @@ export class GitHubClient {
   private rateLimit: RateLimitInfo = { limit: 60, remaining: 60, resetTime: 0, used: 0 };
 
   constructor(token?: string) {
-    this.token = token || process.env.GITHUB_TOKEN;
+    const raw = token?.trim() || process.env.GITHUB_TOKEN?.trim();
+    if (
+      raw &&
+      raw.toUpperCase() !== "NONE" &&
+      raw !== "undefined" &&
+      raw !== "null" &&
+      !raw.includes("your_github")
+    ) {
+      this.token = raw;
+    }
   }
 
   private getHeaders(): HeadersInit {
@@ -76,7 +85,7 @@ export class GitHubClient {
     return { ...this.rateLimit };
   }
 
-  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> {
+  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 20000): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -90,54 +99,43 @@ export class GitHubClient {
     }
   }
 
-  async getRepo(owner: string, repo: string): Promise<GitHubRepoResponse> {
+  private async fetchWithRetry(url: string, options: RequestInit = {}, timeoutMs: number = 20000): Promise<Response> {
     try {
-      const url = `https://api.github.com/repos/${owner}/${repo}`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 5000);
-      this.updateRateLimit(res.headers);
-
-      if (res.status === 404) {
-        throw new Error(`Repository ${owner}/${repo} not found. Ensure it is public or provide a GitHub token.`);
-      }
-      if (res.status === 403) {
-        const resetDate = this.rateLimit.resetTime ? new Date(this.rateLimit.resetTime * 1000).toLocaleTimeString() : "soon";
-        throw new Error(`GitHub API rate limit exceeded. Reset at ${resetDate}. Provide a GitHub token in Settings for 5,000 req/hr.`);
-      }
-      if (!res.ok) {
-        throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
-      }
-
-      return res.json();
-    } catch (err: unknown) {
-      console.warn(`GitHub API getRepo degraded fallback for ${owner}/${repo}:`, err);
-      // Graceful offline/timeout fallback representation
-      return {
-        name: repo,
-        full_name: `${owner}/${repo}`,
-        owner: {
-          login: owner,
-          avatar_url: `https://avatars.githubusercontent.com/u/1000?v=4`,
-        },
-        description: `Repository intelligence target: ${owner}/${repo}`,
-        default_branch: "main",
-        stargazers_count: 14200,
-        forks_count: 1250,
-        open_issues_count: 42,
-        language: "TypeScript",
-        topics: ["developer-tools", "typescript", "architecture"],
-        license: { spdx_id: "MIT", name: "MIT License" },
-        created_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-        html_url: `https://github.com/${owner}/${repo}`,
-        private: false,
-      };
+      return await this.fetchWithTimeout(url, options, timeoutMs);
+    } catch {
+      // 1 retry after 800ms
+      await new Promise((r) => setTimeout(r, 800));
+      return await this.fetchWithTimeout(url, options, timeoutMs + 5000);
     }
+  }
+
+  async getRepo(owner: string, repo: string): Promise<GitHubRepoResponse> {
+    const url = `https://api.github.com/repos/${owner}/${repo}`;
+    const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 15000);
+    this.updateRateLimit(res.headers);
+
+    if (res.status === 404) {
+      throw new Error(`Repository "${owner}/${repo}" was not found on GitHub. Verify the repository name or provide a Personal Access Token in Settings if it is private.`);
+    }
+    if (res.status === 401) {
+      throw new Error("Invalid GitHub token. Please verify your Personal Access Token in Settings.");
+    }
+    if (res.status === 403) {
+      const resetDate = this.rateLimit.resetTime ? new Date(this.rateLimit.resetTime * 1000).toLocaleTimeString() : "soon";
+      throw new Error(`GitHub API rate limit exceeded. Reset at ${resetDate}. Please provide your GitHub Personal Access Token in Settings to get 5,000 req/hr.`);
+    }
+    if (!res.ok) {
+      throw new Error(`GitHub API error (${res.status}): ${res.statusText}`);
+    }
+
+    const data: GitHubRepoResponse = await res.json();
+    return data;
   }
 
   async getTree(owner: string, repo: string, sha: string): Promise<GitHubTreeItem[]> {
     try {
       const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 6000);
+      const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 25000);
       this.updateRateLimit(res.headers);
 
       if (res.ok) {
@@ -145,71 +143,56 @@ export class GitHubClient {
         if (Array.isArray(data.tree) && data.tree.length > 0) {
           return data.tree;
         }
+      } else if (res.status === 403) {
+        console.warn(`GitHub getTree rate-limited or forbidden (${res.status})`);
       }
     } catch (err: unknown) {
-      console.warn(`GitHub API getTree timeout/error for ${owner}/${repo}:`, err);
+      console.warn(`GitHub API getTree error for ${owner}/${repo}:`, err);
     }
 
-    // Graceful offline fallback tree with realistic structure
-    return [
-      { path: "package.json", mode: "100644", type: "blob", sha: "sha1", size: 1200, url: "" },
-      { path: "tsconfig.json", mode: "100644", type: "blob", sha: "sha2", size: 450, url: "" },
-      { path: "README.md", mode: "100644", type: "blob", sha: "sha3", size: 3400, url: "" },
-      { path: ".env.example", mode: "100644", type: "blob", sha: "sha4", size: 280, url: "" },
-      { path: "src/index.ts", mode: "100644", type: "blob", sha: "sha5", size: 2100, url: "" },
-      { path: "src/app/layout.tsx", mode: "100644", type: "blob", sha: "sha6", size: 1800, url: "" },
-      { path: "src/components/button.tsx", mode: "100644", type: "blob", sha: "sha7", size: 900, url: "" },
-      { path: "src/api/routes.ts", mode: "100644", type: "blob", sha: "sha8", size: 2400, url: "" },
-      { path: "docker-compose.yml", mode: "100644", type: "blob", sha: "sha9", size: 550, url: "" },
-    ];
+    // Secondary fallback: fetch root contents list
+    try {
+      const contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
+      const res = await this.fetchWithTimeout(contentsUrl, { headers: this.getHeaders() }, 10000);
+      if (res.ok) {
+        const items = await res.json();
+        if (Array.isArray(items)) {
+          return items.map((it: { path: string; type: string; sha: string; size?: number }) => ({
+            path: it.path,
+            mode: "100644",
+            type: it.type === "dir" ? "tree" : "blob",
+            sha: it.sha,
+            size: it.size || 0,
+            url: "",
+          }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return [];
   }
 
   async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string | null> {
     try {
       const refParam = ref ? `?ref=${encodeURIComponent(ref)}` : "";
       const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}${refParam}`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 3000);
+      const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 12000);
       this.updateRateLimit(res.headers);
 
-      if (!res.ok) return this.getFallbackFileContent(path);
+      if (!res.ok) return null;
 
       const data = await res.json();
       if (data.content && data.encoding === "base64") {
         try {
           return Buffer.from(data.content, "base64").toString("utf8");
         } catch {
-          return this.getFallbackFileContent(path);
+          return null;
         }
       }
     } catch {
-      return this.getFallbackFileContent(path);
-    }
-    return this.getFallbackFileContent(path);
-  }
-
-  private getFallbackFileContent(path: string): string | null {
-    if (path === "package.json") {
-      return JSON.stringify(
-        {
-          name: "app",
-          version: "1.0.0",
-          scripts: { dev: "next dev", build: "next build", test: "vitest run" },
-          dependencies: {
-            next: "^15.0.0",
-            react: "^19.0.0",
-            zustand: "^5.0.0",
-            tailwindcss: "^3.4.0",
-          },
-        },
-        null,
-        2
-      );
-    }
-    if (path === ".env.example") {
-      return `# Environment Configuration\nPORT=3000\nDATABASE_URL=postgresql://user:pass@localhost:5432/db\nJWT_SECRET=super_secret_jwt_key_here\n`;
-    }
-    if (path === "README.md") {
-      return `# Repository\n\nModern web architecture and fast state management.`;
+      return null;
     }
     return null;
   }
@@ -218,7 +201,7 @@ export class GitHubClient {
     try {
       const sinceParam = since ? `&since=${encodeURIComponent(since)}` : "";
       const url = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=${perPage}${sinceParam}`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 5000);
+      const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 15000);
       this.updateRateLimit(res.headers);
 
       if (res.ok) {
@@ -226,31 +209,15 @@ export class GitHubClient {
         if (Array.isArray(data) && data.length > 0) return data;
       }
     } catch {
-      // Fallback
+      // Return empty if commits cannot be loaded
     }
-
-    const now = new Date();
-    return Array.from({ length: 25 }, (_, i) => ({
-      sha: `commit_${i}_${Math.random().toString(36).slice(2, 9)}`,
-      commit: {
-        author: {
-          name: owner,
-          email: `${owner}@users.noreply.github.com`,
-          date: new Date(now.getTime() - i * 3 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        message: i === 0 ? "feat: optimize architecture performance" : `chore: update module ${i}`,
-      },
-      author: {
-        login: owner,
-        avatar_url: `https://avatars.githubusercontent.com/u/1000?v=4`,
-      },
-    }));
+    return [];
   }
 
   async getContributors(owner: string, repo: string, perPage: number = 10): Promise<GitHubContributorItem[]> {
     try {
       const url = `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=${perPage}`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 5000);
+      const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 12000);
       this.updateRateLimit(res.headers);
 
       if (res.ok) {
@@ -258,20 +225,15 @@ export class GitHubClient {
         if (Array.isArray(data) && data.length > 0) return data;
       }
     } catch {
-      // Fallback
+      // ignore
     }
-
-    return [
-      { login: owner, avatar_url: `https://avatars.githubusercontent.com/u/1000?v=4`, contributions: 184 },
-      { login: "collaborator-1", avatar_url: `https://avatars.githubusercontent.com/u/1001?v=4`, contributions: 62 },
-      { login: "core-dev", avatar_url: `https://avatars.githubusercontent.com/u/1002?v=4`, contributions: 45 },
-    ];
+    return [];
   }
 
   async getReleases(owner: string, repo: string, perPage: number = 5): Promise<GitHubReleaseItem[]> {
     try {
       const url = `https://api.github.com/repos/${owner}/${repo}/releases?per_page=${perPage}`;
-      const res = await this.fetchWithTimeout(url, { headers: this.getHeaders() }, 5000);
+      const res = await this.fetchWithRetry(url, { headers: this.getHeaders() }, 10000);
       this.updateRateLimit(res.headers);
 
       if (res.ok) {
@@ -279,13 +241,9 @@ export class GitHubClient {
         if (Array.isArray(data) && data.length > 0) return data;
       }
     } catch {
-      // Fallback
+      // ignore
     }
-
-    return [
-      { tag_name: "v2.1.0", name: "v2.1.0 Performance Overhaul", published_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
-      { tag_name: "v2.0.0", name: "v2.0.0 Architecture Release", published_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString() },
-    ];
+    return [];
   }
 
   async pushFile(
@@ -307,14 +265,14 @@ export class GitHubClient {
       body.sha = existingSha;
     }
 
-    const res = await this.fetchWithTimeout(url, {
+    const res = await this.fetchWithRetry(url, {
       method: "PUT",
       headers: {
         ...this.getHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    }, 8000);
+    }, 15000);
     this.updateRateLimit(res.headers);
 
     if (!res.ok) {

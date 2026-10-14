@@ -60,12 +60,19 @@ function saveQuotas(data: Record<string, QuotaRecord>): void {
 }
 
 export function checkQuota(clientId: string, isPro: boolean = false): QuotaStatus {
+  const isLocalDev =
+    clientId === "127.0.0.1" ||
+    clientId === "::1" ||
+    clientId === "localhost" ||
+    process.env.NODE_ENV !== "production";
+  const effectivePro = isPro || isLocalDev;
+
   const today = getTodayString();
   const quotas = loadQuotas();
   const record = quotas[clientId];
 
-  const tier = isPro ? "pro" : "free";
-  const limit = isPro ? PRO_DAILY_LIMIT : FREE_DAILY_LIMIT;
+  const tier = effectivePro ? "pro" : "free";
+  const limit = effectivePro ? 1000 : FREE_DAILY_LIMIT;
 
   let used = 0;
   if (record && record.dateStr === today) {

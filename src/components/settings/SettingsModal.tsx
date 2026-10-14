@@ -5,11 +5,17 @@ import { useAnalysisStore, AppSettings } from "@/store/useAnalysisStore";
 import { X, Settings, Key, Shield, Save, Check, Info } from "lucide-react";
 
 export function SettingsModal() {
-  const { isSettingsOpen, setIsSettingsOpen, settings, updateSettings } = useAnalysisStore();
-  const [formData, setFormData] = useState<AppSettings>({ ...settings });
-  const [saved, setSaved] = useState(false);
+  const { isSettingsOpen, setIsSettingsOpen } = useAnalysisStore();
 
   if (!isSettingsOpen) return null;
+
+  return <SettingsModalDialog onClose={() => setIsSettingsOpen(false)} />;
+}
+
+function SettingsModalDialog({ onClose }: { onClose: () => void }) {
+  const { settings, updateSettings } = useAnalysisStore();
+  const [formData, setFormData] = useState<AppSettings>({ ...settings });
+  const [saved, setSaved] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,13 +23,13 @@ export function SettingsModal() {
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
-      setIsSettingsOpen(false);
+      onClose();
     }, 1000);
   };
 
   return (
     <div
-      onClick={() => setIsSettingsOpen(false)}
+      onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 text-xs animate-in fade-in duration-150"
     >
       <div
@@ -46,7 +52,7 @@ export function SettingsModal() {
             </div>
           </div>
           <button
-            onClick={() => setIsSettingsOpen(false)}
+            onClick={onClose}
             aria-label="Close settings"
             className="rounded-lg p-1 text-white/70 hover:bg-secondary hover:text-white transition-colors"
           >
@@ -65,10 +71,10 @@ export function SettingsModal() {
               onChange={(e) => setFormData({ ...formData, provider: e.target.value as AppSettings["provider"] })}
               className="w-full rounded-xl border border-border/80 bg-white px-3.5 py-2.5 text-black focus:outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40 transition-all text-xs [&>option]:text-black [&>option]:bg-white"
             >
-              <option value="auto" className="text-black bg-white">Auto (Default: Environment / Heuristic Fallback)</option>
-              <option value="gemini" className="text-black bg-white">Google Gemini (Gemini 2.0 Flash / Pro)</option>
+              <option value="auto" className="text-black bg-white">Auto (Default: Gemini 3.8 Flash / Heuristic)</option>
+              <option value="gemini" className="text-black bg-white">Google Gemini (Gemini 3.8 Flash / Recommended)</option>
               <option value="openai" className="text-black bg-white">OpenAI (GPT-4o / GPT-4o-mini)</option>
-              <option value="anthropic" className="text-black bg-white">Anthropic Claude (Claude 3.5 Sonnet)</option>
+              <option value="anthropic" className="text-black bg-white">Anthropic Claude (Requires Custom Key — Server is NONE)</option>
               <option value="ollama" className="text-black bg-white">Local Ollama (Self-Hosted)</option>
             </select>
           </div>
@@ -121,7 +127,7 @@ export function SettingsModal() {
               className="w-full rounded-xl border border-border/80 bg-white px-3.5 py-2.5 text-black placeholder:text-neutral-500 focus:outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40 transition-all text-xs"
             />
             <span className="text-[10px] text-white/70 block">
-              Increases rate limit from 60 to 5,000 requests/hour and enables push actions.
+              Stored locally in your browser. Increases rate limit to 5,000 req/hr and enables private repo access.
             </span>
           </div>
 
@@ -140,7 +146,7 @@ export function SettingsModal() {
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
             <button
               type="button"
-              onClick={() => setIsSettingsOpen(false)}
+              onClick={onClose}
               className="rounded-xl px-4 py-2 text-white/80 hover:bg-secondary hover:text-white transition-colors font-sans text-xs"
             >
               Cancel
